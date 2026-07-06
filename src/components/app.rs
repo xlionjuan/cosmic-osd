@@ -301,7 +301,17 @@ impl App {
             return Task::none();
         };
         if self.size.is_none_or(|s| s.height < 2. || s.width < 2.) {
-            return Task::none();
+            self.margin = IcedMargin::default();
+            return corner_radius(
+                *id,
+                Some(CornerRadius {
+                    top_left: 0,
+                    top_right: 0,
+                    bottom_left: 0,
+                    bottom_right: 0,
+                }),
+            )
+            .discard();
         }
 
         let is_display_number = matches!(state.params(), &Params::DisplayNumber(_));
@@ -782,13 +792,16 @@ impl cosmic::Application for App {
                 Task::none()
             }
             Msg::Size(id, size) => {
-                self.size = Some(size);
-                let mut tasks = Vec::with_capacity(3);
-                tasks.push(self.handle_overlap());
-                if self.dummy_id.is_none_or(|dummy| id == dummy) {
-                    tasks.push(overlap_notify(id, true));
+                if self.dummy_id.is_none_or(|dummy| id == dummy) {}
+                if self.dummy_id.is_some_and(|d| d != id) {
+                    self.size = Some(size);
+                    let mut tasks = Vec::with_capacity(3);
+                    tasks.push(self.handle_overlap());
+
+                    Task::batch(tasks)
+                } else {
+                    overlap_notify(id, true)
                 }
-                return Task::batch(tasks);
             }
             Msg::Zbus(result) => {
                 if let Err(e) = result {
@@ -1217,10 +1230,10 @@ impl cosmic::Application for App {
                     .view()
                     .map(move |msg| Msg::DisplayIdentifierSurface((id, msg))),
             };
-        } else if let Some((indicator_id, state)) = &self.indicator {
-            if id == *indicator_id {
-                return state.view().map(Msg::OsdIndicator);
-            }
+        } else if let Some((indicator_id, state)) = &self.indicator
+            && *indicator_id == id
+        {
+            return state.view().map(Msg::OsdIndicator);
         } else if matches!(self.action_to_confirm, Some((c_id, _, _)) if c_id == id) {
             let cosmic_theme = self.core.system_theme().cosmic();
             let (_, cur_action, countdown) = self.action_to_confirm.as_ref().unwrap();
